@@ -1,0 +1,72 @@
+Infinispan HTTP/2 with Go example
+=================================
+
+This example shows how to run Infinispan with HTTP/2 and TLS/ALPN support and use Go client
+to connect to it.
+
+How to use it?
+--------------
+
+This example contains a `Makefile` which supports the following targets:
+
+* `make download` - Downloads Infinispan server from Nexus and unpacks it
+* `make prepare-infinispan` - Generates certificates and copies configuration to Infinispan Server
+* `make start-infinispan` - Starts infinispan
+* `make stop-infinispan` - Stops infinispan
+* `make run-client` - Runs *this* Go app
+
+The simplest procedure involves invoking:
+
+1. `make download`
+2. `make prepare-infinispan`
+3. `make start-infinispan`
+4. `make run-client`
+
+The output of the example should be the following:
+
+```
+go run Main.go
+Result: (Infinispan is cool!), Protocol HTTP/2.0
+```
+
+Generating certificate
+----------------------
+
+One of the most tricky part of this example is how to generate a JKS for the server and then use a corresponding
+certificate in Go.
+
+The first step is to generate a private key for the server. Here's an example:
+
+```
+keytool -genkey -noprompt -trustcacerts -keyalg RSA -alias "localhost" -dname "CN=localhost, OU=Infinispan, O=JBoss, L=Red Hat, ST=World, C=WW" -keypass "secret" -storepass "secret" -keystore "server_keystore.jks"
+```
+
+The most important bits are `alias` (which is used in Infinispan server XML) and `CN` which needs to match the server name.
+The generated key (`server_keystore.jks`) can be used in the server right away.
+
+Based on the private key we can generate a certificate for the client (just a reminder, it contains public key which is used by the client to encrypt transport between the client and the server).
+We need to do it in two steps - the first one involved `keytool` to export it and then we use `openssl` to convert it to `PEM` format which can be used in Go.
+
+```
+keytool -export -keyalg RSA -alias "localhost" -storepass "secret" -file "client_cert.cer" -keystore "server_keystore.jks"
+openssl x509 -inform der -in client_cert.cer -out certificate.pem
+```
+
+Go client code
+--------------
+
+Creating a REST client in Go is very straightforward. The only tricky part is to create proper TLS config:
+
+```
+tlsTransport := &http.Transport{
+    TLSClientConfig: &tls.Config{
+        //please refer to Main.go for details here
+    },
+}
+http2.ConfigureTransport(tlsTransport)
+http2Client := http.Client{
+    Transport: tlsTransport,
+}
+http2Client.Get....
+http2Client.Post....
+```
